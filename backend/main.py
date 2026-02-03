@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from sqlmodel import Session, SQLModel, create_engine, select
-from .models import User, Item, Order, ItemStatus, UserCreate, Token, UserRead, OrderStatus
+from models import User, Item, Order, ItemStatus, UserCreate, Token, UserRead, OrderStatus
 
 # Load environment variables from .env file
 load_dotenv()
@@ -34,10 +34,27 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/auth/login")
 
 # --- DATABASE CONFIG ---
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///backend/database_v2.db")
+# Use pathlib to construct explicit database file path
+BASE_DIR = Path(__file__).resolve().parent
+DB_PATH = BASE_DIR / "app.db"
+
+# Allow PostgreSQL override via environment variable
+DATABASE_URL = os.getenv("DATABASE_URL")
+if DATABASE_URL is None:
+    # Use absolute path with proper URI encoding for Windows
+    db_path_str = str(DB_PATH).replace("\\", "/")
+    DATABASE_URL = f"sqlite:///{db_path_str}"
+
 # SQLite requires check_same_thread=False, but PostgreSQL doesn't need it
 connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
 engine = create_engine(DATABASE_URL, connect_args=connect_args)
+
+app = FastAPI(title="101 Dress API")
+
+
+@app.get("/")
+def root():
+    return {"status": "Backend running"}
 
 def create_db_and_tables():
     SQLModel.metadata.create_all(engine)
@@ -440,8 +457,3 @@ def read_orders(user_id: Optional[str] = None, session: Session = Depends(get_se
     orders = session.exec(query).all()
     # Explicitly ensure items are loaded if lazy (SQLModel usually handles this dynamically in memory if session is active)
     return orders
-
-if __name__ == "__main__":
-    import uvicorn
-    port = int(os.getenv("PORT", "8001"))
-    uvicorn.run("backend.main:app", host="0.0.0.0", port=port, reload=True)
